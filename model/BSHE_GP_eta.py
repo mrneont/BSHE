@@ -170,10 +170,8 @@ class BSHE_voxel_GP_eta():
         self.res -= self.theta_beta.unsqueeze(0)
 
     def update_sig2_e(self):
-        # a_new = (1 + self.L + self.L * self.N + self.L_eta * self.N)/ 2 
-        # b_new = ( self.theta_beta ** 2).sum() / 2 + ( self.res ** 2).sum() / 2 + ( self.theta_eta ** 2).sum() / 2 + 1 / self.a_e
-        a_new = (1 + self.L + self.L * self.N )/ 2 
-        b_new = ( self.theta_beta ** 2).sum() / 2 + ( self.res ** 2).sum() / 2  + 1 / self.a_e
+        a_new = (1 + self.L + self.L * self.N + self.L_eta * self.N)/ 2 
+        b_new = ( self.theta_beta ** 2).sum() / 2 + ( self.res ** 2).sum() / 2 + ( self.theta_eta ** 2).sum() / 2 + 1 / self.a_e
         m = torch.distributions.Gamma(a_new, b_new)
         self.sig2_e = 1 / m.sample()
 
