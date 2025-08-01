@@ -3,38 +3,16 @@ from tqdm import tqdm
 import time
 import numpy as np
 import multiprocessing as mp
-from model.helper import ker_approx
-
-
-def run_single_chain(Y, mute=True, **kwargs):
-    model = BSHE_VI(Y, **kwargs)
-    model.fit(verbose=False, mute=mute)
-    paras = model.get_samples()
-    profile = model.get_profile()
-    return paras, profile
+from model.helper import ker_approx, get_basis
 
 
 
-def get_basis(S, L, kernel, err = 1e-4, dtype=torch.float32):
-    V = S.shape[0]
-    induce = torch.linspace(0, V, steps=L+2)[1:-1].long()
-    S_c = S[induce,:]
-
-    B, eig_val_sqrt = ker_approx(kernel, S, S_c, err = err, dtype = dtype) #ls, var, nu
-    return B, eig_val_sqrt
 
 class BSHE_VI():
-    def __init__(self, Y, grids,  kernel, kernel_eta=None,
-                X=None, L = 10, L_eta=5, dtype=torch.float32,
+    def __init__(self, Y, grids, kernel, L, L_eta, 
+                kernel_eta=None, X=None, 
                 max_iter = 1000, ELBO_diff_tol=1e-4, para_diff_tol=1e-4, elbo_stop=True,
-                init_alpha = None, 
-                init_theta_eta = None, 
-                init_theta_beta = None, 
-                init_sig2_e = None, 
-                inclue_intercept=False,
-                verbose=200,
-                A2=100,
-                seed=42
+                dtype=torch.float32,verbose=200,A2=100,seed=42
                 ):
         torch.manual_seed(seed)
         self.y = Y.to(dtype) # V by n
@@ -44,8 +22,7 @@ class BSHE_VI():
         if X is None:
             X = torch.ones(self.N,1)
         else:
-            if inclue_intercept is True:
-                X = torch.column_stack((torch.ones(self.N,1), X))
+            X = torch.column_stack((torch.ones(self.N,1), X))
         self.X = X.to(dtype)
         self.J = X.shape[1]
 
@@ -59,11 +36,13 @@ class BSHE_VI():
 
         assert L_eta < L
 
-        self.B, self.eig_val_sqrt = get_basis(grids, L,  kernel, dtype=dtype)
-        self.B_eta, self.eig_val_sqrt_eta = get_basis(grids, L_eta,  kernel_eta, dtype=dtype)
-
         self.L = L
         self.L_eta = L_eta
+        self.B, self.eig_val_sqrt = get_basis(grids, L,  kernel, dtype=dtype)
+        self.B_eta, self.eig_val_sqrt_eta = get_basis(grids, L_eta,  kernel_eta, dtype=dtype)
+        self.basis =  self.B * (self.eig_val_sqrt.unsqueeze(0) )
+        self.basis_eta =  self.B_eta * (self.eig_val_sqrt_eta.unsqueeze(0) )
+        
         self.B_lamb = self.B * (self.eig_val_sqrt.unsqueeze(0) )
         self.B_lamb_inv = self.B * ( (1.0 / self.eig_val_sqrt).unsqueeze(0))  # V by L
 
@@ -77,40 +56,45 @@ class BSHE_VI():
         self.B_prime_sq = self.B_prime @ self.B_prime.t()
 
 
-        #initialization
-        self.E_alpha = torch.randn(self.J, dtype=self.dtype) if init_alpha is None else init_alpha.clone()
-        self.Var_alpha = torch.ones(self.J)
-        self.E_SS_alpha = torch.ones(self.J)
-
-        self.E_theta_eta = torch.randn(self.N, self.L_eta, dtype=self.dtype) if init_theta_eta is None else init_theta_eta.clone()
-        self.Var_theta_eta = torch.ones(self.L_eta, self.L_eta)
-        self.E_SS_theta_eta = torch.ones(self.N, self.L_eta)
-        
-        self.E_theta_beta = torch.randn(self.J, self.L, dtype=self.dtype) if init_theta_beta is None else init_theta_beta.clone()
-        self.Var_theta_beta = torch.ones(self.J)
-        self.E_SS_theta_beta = torch.ones(self.J, self.L)
-
-        self.E_inv_sig2_eps = torch.rand(1, dtype=self.dtype) if init_sig2_e is None else init_sig2_e.clone()
-        self.E_inv_sig2_eta = torch.rand(1, dtype=self.dtype) if init_sig2_e is None else init_sig2_e.clone()
-        self.E_inv_sig2_beta = torch.rand(1, dtype=self.dtype) if init_sig2_e is None else init_sig2_e.clone()
-        self.E_inv_sig2_alpha = torch.rand(1, dtype=self.dtype) if init_sig2_e is None else init_sig2_e.clone()
-        self.E_inv_a_beta, self.E_inv_a_eta, self.E_inv_a_eps,  self.E_inv_a_alpha = torch.ones(4)
-
-        #self.sig2_alpha = sig2_alpha
         self.A2 = A2
         self.digamma_one = torch.digamma(torch.ones(1))[0]
 
-        self.update_res()
+        
         self.loglik_y = []
         self.ELBO = []
         self.elbo = 0
         self.elbo_stop = elbo_stop
-
         self.verbose = verbose
 
 
+    def run(self, verbose=True, mute=True):
+        self.fit(verbose=verbose, mute=mute)
+        self.paras = self.get_samples()
+        self.profile = self.get_profile()
+        return self.paras, self.profile
+
+    def init_paras(self):
+        self.E_alpha = torch.randn(self.J, dtype=self.dtype) 
+        self.Var_alpha = torch.ones(self.J)
+        self.E_SS_alpha = torch.ones(self.J)
+
+        self.E_theta_eta = torch.randn(self.N, self.L_eta, dtype=self.dtype)
+        self.Var_theta_eta = torch.ones(self.L_eta, self.L_eta)
+        self.E_SS_theta_eta = torch.ones(self.N, self.L_eta)
+        
+        self.E_theta_beta = torch.randn(self.J, self.L, dtype=self.dtype)
+        self.Var_theta_beta = torch.ones(self.J)
+        self.E_SS_theta_beta = torch.ones(self.J, self.L)
+
+        self.E_inv_sig2_eps = torch.rand(1, dtype=self.dtype) 
+        self.E_inv_sig2_eta = torch.rand(1, dtype=self.dtype)
+        self.E_inv_sig2_beta = torch.rand(1, dtype=self.dtype) 
+        self.E_inv_sig2_alpha = torch.rand(1, dtype=self.dtype) 
+        self.E_inv_a_beta, self.E_inv_a_eta, self.E_inv_a_eps,  self.E_inv_a_alpha = torch.ones(4)
+        self.update_res()
 
     def fit(self, verbose=False, mute=False):
+        self.init_paras()
         start_time = time.time()
         for i in tqdm(range(self.max_iter), disable=mute): 
             self.update_E_alpha()
@@ -141,17 +125,6 @@ class BSHE_VI():
         self.runtime = time.time() - start_time
         if verbose:
             print(f"Used iter {i} finished in {self.runtime:.2f} seconds")
-        
-    def get_hessian(self):
-        self.enable_grad()
-        self.update_E_alpha()
-        self.update_E_theta_eta()
-        self.update_E_theta_beta()
-        self.update_E_inv_sig2_beta()
-        self.update_E_inv_sig2_eta()
-        self.update_E_inv_sig2_eps()
-        self.update_E_log_post()
-
 
     def update_res(self):
         self.res = self.y_tilde -  (self.X @ self.E_alpha)[:,None]  * self.B_lamb_inv_sumv  - self.E_theta_eta @ self.B_prime - self.X @ self.E_theta_beta
@@ -204,7 +177,6 @@ class BSHE_VI():
             self.E_theta_eta[i] -= self.E_theta_eta[i].mean()
             self.E_SS_theta_eta[i] = self.E_theta_eta[i] ** 2 + self.Var_theta_eta
             
-        #self.E_theta_eta -= self.E_theta_eta.mean(1, keepdim=True)
         self.res -= self.E_theta_eta @ self.B_prime
         self.E_theta_eta_diff = ((E_theta_eta_old - self.E_theta_eta).abs()).mean()
 
@@ -281,18 +253,8 @@ class BSHE_VI():
         self.update_E_log_post()
         self.update_entropy()
         self.elbo = self.E_log_post - self.entropy
-    #     ELBO = -0.5 * self.E_SS_alpha / self.sig2_alpha
-    #     ELBO += -0.5 * torch.log(self.Var_alpha)
-    #     ELBO += -0.5 * torch.log(self.L * self.Var_theta_beta)
-    #     ELBO += -0.5 * self.N * torch.logdet(self.Cov_theta_eta)
-    #     ELBO -=  (1 + self.L + self.L * self.N + self.L_eta * self.N)/ 2 * torch.log( self.E_inv_a_e + 0.5 * self.E_SS_theta_beta.sum() + 0.5 * self.E_SS_theta_eta.sum() + 0.5 *(self.res ** 2).sum() \
-    #         #+ (self.N * self.Var_alpha * self.B_lamb_inv_sumv_ssq + (self.B_prime_sq.diag() * self.E_SS_theta_eta).sum() + self.E_SS_theta_beta.sum()) / 2)
-    #         + (self.N * self.Var_alpha * self.B_lamb_inv_sumv_ssq + (self.B_prime_sq.diag() * self.E_SS_theta_eta).sum() + self.N * self.L * self.Var_theta_beta.sum()) / 2)
-    #     ELBO -= torch.log(self.E_inv_sig2_e + 1 / self.A2) + self.E_inv_a_e * self.E_inv_sig2_e
-    #     self.elbo = ELBO
 
     def update_E_log_post(self):
-        
         self.E_log_post = -0.5 * self.N * self.L * self.E_log_sig2_eps - 0.5 * self.E_inv_sig2_eps * ((self.res ** 2).sum() + self.norm_alpha + self.norm_theta_beta + self.norm_theta_eta)
         self.E_log_post += -0.5 * self.J * self.E_log_sig2_alpha - 0.5 * self.E_inv_sig2_alpha * self.E_SS_alpha.sum()
         self.E_log_post += -0.5 * self.L * self.E_log_sig2_beta - 0.5 * self.E_inv_sig2_beta * self.E_SS_theta_beta.sum()
@@ -333,10 +295,6 @@ class BSHE_VI():
         self.entropy += - torch.log((1/self.A2 + self.E_inv_sig2_alpha))
         self.entropy += - torch.log((1/self.A2 + self.E_inv_sig2_eta))
         self.entropy += - torch.log((1/self.A2 + self.E_inv_sig2_eps))
-
-
-
-   
     
     def monitor_vb(self):
         self.update_ELBO()
@@ -388,6 +346,51 @@ class BSHE_VI():
             "ELBO": self.ELBO,
             "ll": self.loglik_y,
         }
+    
+    def PPC(self, n_mcmc=100, dtype=torch.float32):
+        """
+        Posterior Predictive Check (PPC)
+
+        Args:
+            n_sample (int): number of posterior samples
+            dtype (torch.dtype): output tensor dtype
+
+        Returns:
+            pred_y: tensor of shape (n_sample, N, V)
+        """
+
+        E_alpha = self.paras['E_alpha']
+        E_theta_beta = self.paras['E_theta_beta']
+        E_theta_eta = self.paras['E_theta_eta']
+
+        Var_alpha = self.paras['Var_alpha']
+        Var_theta_beta = self.paras['Var_theta_beta']
+        Var_theta_eta = self.paras['Var_theta_eta']
+
+        a_sig2_eps = self.paras['a_sig2_eps']
+        b_sig2_eps = self.paras['b_sig2_eps']
+
+
+        mcmc_alpha = torch.randn(n_mcmc, self.J) * Var_alpha[None,:].sqrt() + E_alpha[:,None]
+        mcmc_theta_eta = torch.randn(n_mcmc, self.N, self.L_eta) * Var_theta_eta[None, None,:].sqrt() + E_theta_eta[None,:,:]
+        mcmc_theta_beta = torch.randn(n_mcmc,self.J, self.L) * Var_theta_beta.sqrt() + E_theta_beta[None,:,:]
+        mcmc_alpha = torch.randn(n_mcmc, self.J) * Var_alpha[None,:].sqrt() + E_alpha[:,None]
+        mcmc_inv_sig2_e = torch.distributions.Gamma(a_sig2_eps, b_sig2_eps).sample((n_mcmc,))
+        
+        pred_y = torch.zeros(n_mcmc, self.N, self.V, dtype=dtype)
+        basis_eta_t = self.basis_eta.t()
+        
+        for s in range(n_mcmc):
+            alpha = mcmc_alpha[s]
+            theta_eta = mcmc_theta_eta[s]
+            theta_beta = mcmc_theta_beta[s]
+            inv_sig2_e = mcmc_inv_sig2_e[s]
+
+            mean = (self.X @ alpha)[:,None] + theta_eta @ basis_eta_t +  self.X @ (theta_beta @ self.basis.t())
+            noise = self.basis @ (torch.randn(self.L, self.N) / inv_sig2_e.sqrt())
+            pred_y[s] = mean + noise.t()
+        return pred_y
+
     
     # def get_basis(self):
     #     return self.B_lamb
