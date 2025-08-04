@@ -347,6 +347,21 @@ class BSHE_VI():
             "ll": self.loglik_y,
         }
     
+    def get_stat_evidence(self, n_mcmc=500):
+        E_alpha = self.paras['E_alpha']
+        E_theta_beta = self.paras['E_theta_beta']
+
+        Var_alpha = self.paras['Var_alpha']
+        Var_theta_beta = self.paras['Var_theta_beta']
+
+        mcmc_alpha = torch.randn(n_mcmc, self.J) * Var_alpha[None,:].sqrt() + E_alpha[None,:]
+        mcmc_theta_beta = torch.randn(n_mcmc,self.J, self.L) * Var_theta_beta.sqrt()[None,:,None] + E_theta_beta[None,:,:]
+        voxel_mcmc = mcmc_alpha[:,None] + mcmc_theta_beta @ self.basis.t()
+        mean = voxel_mcmc[:,0,:].mean(dim=(0))
+        std = voxel_mcmc[:,0,:].std(dim=(0))
+        return mean, std
+
+
     def PPC(self, n_mcmc=100, dtype=torch.float32):
         """
         Posterior Predictive Check (PPC)
@@ -371,10 +386,9 @@ class BSHE_VI():
         b_sig2_eps = self.paras['b_sig2_eps']
 
 
-        mcmc_alpha = torch.randn(n_mcmc, self.J) * Var_alpha[None,:].sqrt() + E_alpha[:,None]
+        mcmc_alpha = torch.randn(n_mcmc, self.J) * Var_alpha[None,:].sqrt() + E_alpha[None,:]
         mcmc_theta_eta = torch.randn(n_mcmc, self.N, self.L_eta) * Var_theta_eta[None, None,:].sqrt() + E_theta_eta[None,:,:]
-        mcmc_theta_beta = torch.randn(n_mcmc,self.J, self.L) * Var_theta_beta.sqrt() + E_theta_beta[None,:,:]
-        mcmc_alpha = torch.randn(n_mcmc, self.J) * Var_alpha[None,:].sqrt() + E_alpha[:,None]
+        mcmc_theta_beta = torch.randn(n_mcmc,self.J, self.L) * Var_theta_beta.sqrt()[None,:,None] + E_theta_beta[None,:,:]
         mcmc_inv_sig2_e = torch.distributions.Gamma(a_sig2_eps, b_sig2_eps).sample((n_mcmc,))
         
         pred_y = torch.zeros(n_mcmc, self.N, self.V, dtype=dtype)
