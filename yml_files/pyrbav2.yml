@@ -1,0 +1,17 @@
+name: pyrbav2                # TO MAKE:  conda env create -f pyrbav2.yml
+channels:
+  - conda-forge
+  - defaults
+channel_priority: strict
+dependencies:
+  - python
+  - matplotlib
+  - numpy
+  - nibabel
+  - pytorch
+  - jupyter
+  - nilearn
+  - tqdm
+  - pip
+  - pip:
+      - fastkde
