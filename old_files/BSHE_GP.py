@@ -39,6 +39,9 @@ def get_basis(S, L, kernel, dtype=torch.float32):
     return B, lamb_sqrt
 
 class BSHE_voxel_GP():
+    '''
+    Bayesian Spatial Hierarchical Effect modeling voxel and individual level effects with Gaussian process prior
+    '''
     def __init__(self, Y, grids, kernel, L = 10, dtype=torch.float32,
                 burnin=100, thin=1, mcmc_sample=10,
                 B = None, eig_val_sqrt=None,

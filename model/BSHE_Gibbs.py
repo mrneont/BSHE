@@ -26,7 +26,7 @@ class BSHE_Gibbs():
             burnin (int): burn-in samples for MCMC sampling
             thin (int): number of thinning for MCMC sampling
             mcmc_sample (int): number of posterior samples for MCMC sampling
-            A (float): scale paprameter for IG priors
+            A2 (float): scale paprameter for IG priors
             dtype (torch.dtype): output tensor dtype
         """
         self.y = Y.to(dtype)
