@@ -1,0 +1,13 @@
+# Byte-compiled / optimized / compiled files
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+# Jupyter Notebook files
+.ipynb_checkpoints
+ 
+
