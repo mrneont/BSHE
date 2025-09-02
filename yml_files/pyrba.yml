@@ -1,0 +1,11 @@
+name: pyrbav1           # TO MAKE:  conda env create -f pyrbav1.yml
+dependencies:
+  - python
+  - matplotlib
+  - numpy
+  - nibabel
+  - pytorch
+  - jupyter
+  - nilearn
+  - tqdm
+ 
