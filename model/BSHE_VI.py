@@ -9,8 +9,8 @@ from model.helper import ker_approx, get_basis
 
 
 class BSHE_VI():
-    def __init__(self, Y, grids, kernel, L, L_eta, 
-                kernel_eta=None, X=None, 
+    def __init__(self, Y, grids, kernel, L=None, L_eta=None, 
+                kernel_eta=None, X=None, include_intercept = True,
                 max_iter = 1000, ELBO_diff_tol=1e-4, para_diff_tol=1e-4, elbo_stop=True,
                 dtype=torch.float32,verbose=200,A2=100,seed=42
                 ):
@@ -22,7 +22,8 @@ class BSHE_VI():
         if X is None:
             X = torch.ones(self.N,1)
         else:
-            X = torch.column_stack((torch.ones(self.N,1), X))
+            if include_intercept:
+                X = torch.column_stack((torch.ones(self.N,1), X))
         self.X = X.to(dtype)
         self.J = X.shape[1]
 

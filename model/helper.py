@@ -2,6 +2,27 @@ import numpy as np
 import torch
 from model.utils import save_pickle 
 
+def generate_grids(img_shape, V_range=[-1,1]):
+    V = np.prod(img_shape)
+    d = len(img_shape)
+    assert((d >= 1) & (d <=3))
+    if (d == 1) :
+          x_ = np.linspace(V_range[0], V_range[1], img_shape[0])
+          S = torch.from_numpy(x_).reshape(V,1)
+    elif (d == 2) :
+            x_ = np.linspace(V_range[0], V_range[1], img_shape[0])
+            y_ = np.linspace(V_range[0],  V_range[1], img_shape[1])
+            x, y = np.meshgrid(x_, y_,  indexing='ij')
+            S = torch.from_numpy(np.column_stack((x.reshape(-1), y.reshape(-1))))
+    else:
+            x_ = np.linspace(V_range[0],  V_range[1], img_shape[0])
+            y_ = np.linspace(V_range[0],  V_range[1], img_shape[1])
+            z_ = np.linspace(V_range[0],  V_range[1], img_shape[2])
+
+            x, y, z = np.meshgrid(x_, y_, z_, indexing='ij')
+            S = torch.from_numpy(np.column_stack((x.reshape(-1), y.reshape(-1), z.reshape(-1))))
+    return S.float()
+
 
 
 def matern_kernel(X, Y, lengthscale=1.0, variance=1.0, nu=1.5):
