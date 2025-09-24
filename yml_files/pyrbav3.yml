@@ -1,0 +1,16 @@
+name: pyrbav3                # TO MAKE:  conda env create -f pyrbav3.yml
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python
+  - matplotlib
+  - numpy
+  - nibabel
+  - pytorch
+  - jupyter
+  - nilearn
+  - tqdm
+  - pip
+  - pip:
+    - fastkde
